@@ -60,7 +60,7 @@
 
 | 학습 내용 | 자동차 경주 적용 예시 |
 | --- | --- |
-| **스레드 생성(start vs run)** | 각 Car를 Thread.start()로 실행해야 병렬 |
+| **스레드 생성(start vs run)** | 각 Car를 `Thread.start()`로 실행해야 병렬 |
 | **Runnable vs Thread** | Car는 Runnable 구현, RacingGame이 스레드 관리 |
 | **데몬 스레드** | 전체 레이스 모니터링용 백그라운드 스레드 가능 |
 | **스택 vs 힙** | 각 Car 스레드는 run() 스택 독립, 하지만 cars 리스트는 공유 |
@@ -96,8 +96,45 @@
 
 | 학습 내용 | 자동차 경주 적용 예시 | 실제 코드/ 행동 예시 |
 | --- | --- | --- |
-| **NEW 상태** | 각 자동차(Car)가 생성만 되고 아직 출발하지 않은 단계. 즉, new Thread(car)로 객체는 만들어졌지만 레이스가 시작되지 않은 상태. | Thread t1 = new Thread(new Car(”pobi”)); |
-| **RUNNABLE 상태** | 레이스가 “출발” 신호로 start() 호출될 때. 각 Car 스레드가 CPU 할당을 기다리거나 실제로 실행 중 | t1.start(); |
-| **join() 사용** | RaceController가 “모든 자동차가 완주할 때까지 기다린다.” 즉, 메인 스레드가 모든 Car 스레드의 완료를 기다림. | for(Thread t : threads) {       t. join(); }                              printResults(); // 모든 차가 완주하면 결과 출력 |
-| **join(long millis)** | “경주 제한 시간”을 설정할 수 있다. 일정 시간만 기다리고, 아직 안 끝난 차는 완주 실패 처리 가능 | t.join(5000); // 5초 안에 완주 못하면 탈락 |
+| **NEW 상태** | 각 자동차(Car)가 생성만 되고 아직 출발하지 않은 단계. 즉, `new Thread(car)`로 객체는 만들어졌지만 레이스가 시작되지 않은 상태. | `Thread t1 = new Thread(new Car(”pobi”));` |
+| **RUNNABLE 상태** | 레이스가 “출발” 신호로 start() 호출될 때. 각 Car 스레드가 CPU 할당을 기다리거나 실제로 실행 중 | `t1.start();` |
+| **join() 사용** | RaceController가 “모든 자동차가 완주할 때까지 기다린다.” 즉, 메인 스레드가 모든 Car 스레드의 완료를 기다림. | `for(Thread t : threads) { t. join(); }                      printResults(); // 모든 차가 완주하면 결과 출력` |
+| **join(long millis)** | “경주 제한 시간”을 설정할 수 있다. 일정 시간만 기다리고, 아직 안 끝난 차는 완주 실패 처리 가능 | `t.join(5000); // 5초 안에 완주 못하면 탈락` |
 | **스레드 생명 주기                (NEW → RUNNABLE → TERNIMATED)**     | 각 Car 스레드는 레이스 시작 시 RUNNABLE, 주행이 끝나면 TERNIMATED, 이 생명 주기로 흐름을 관리할 수 있다. | 상태 모니터링 스레드를 추가해서 각 Car 스레드 상태를 주기적으로 출력 |
+
+
+---
+## 📚 스레드 제어와 생명 주기 2
+
+1. 스레드 정지를 위해 단순 boolean 플래그를 사용할 때 발생할 수 있는 문제점은?
+   - **즉시 응답하지 않고 지연될 수 있다.**
+   - 스레드가 sleep같은 블록킹 상태에 있을 때, 플래그를 변경한 다음 while 루프 체크까지 인식하지 못해 정지가 지연될 수 있다. 즉각적인 응답이 어렵다.
+
+2. 스레드가 ‘sleep()’ 등으로 대기 중일 때 다른 스레드로부터 ‘interrupt()’ 호출을 받으면 어떻게 되는지?
+   - **즉시 깨어나 ‘InterruptedException’이 발생한다.**
+   - ‘interrupt()’는 ‘sleep’, ‘join’ 등의 대기 메소드를 즉시 중단시키고 ‘InterruptedException’을 발생시킨다. 이를 통해 대기 상태에서 빠르게 벗어날 수 있다.
+
+3. 스레드의 인터럽트 상태를 확인하며, 동시에 그 상태를 해제 (false로 변경)하는 메서드는?
+   - **Thread.interrupted()**
+   - ‘Thread.interrupted()’ 는 현재 스레드의 인터럽트 상태를 확인하면서, 확인 후 그 상태를 자동으로 false로 초기화해주는 역할을 한다. 자원 정리 등에 유용하다.
+
+4. ‘Thread.stop()’ 메서드가 사용 중지된 주된 이유는?
+   - **스레드의 자원을 안전하게 정리할 수 없기 때문이다.**
+   - ‘Thread.stop()’ 은 언제 어디서 멈출지 예측할 수 없어 스레드가 사용하던 자원을 안전하게 정리할 기회를 주지 않기 때문에 위험하다.
+
+5. ‘Thread.yield()’ 와 ‘Thread.sleep()’ 의 가장 큰 차이점은?
+   - **‘yield()’ 는 스레드 상태(RUNNABLE)을 유지하고 ‘sleep’ 은 대기 상태(TIMED_WAITED)로 변경한다.**
+   - ‘Thread.yield()’ 는 Runnable 상태를 유지하며 잠깐 CPU 사용 기회를 양보하지만, ‘Thread.sleep()’ 은 스레드를 Timed Waiting 상태로 완전히 옮겨 스케줄링에서 제외한다.
+
+
+### 🚗 자동차 경주에 적용 해보기
+
+- 2주차 자동차 경주 미션은 interrupt()를 필요로 하지 않는다. 하지만 “비상 정지”나 “시간 제한”같은 로직을 추가하게 된다면, interrupt()는 스레드를 안전하게 멈추는 올바른 수단이 된다.
+
+| 학습 내용 | 자동차 경주 적용 예시 | 실제 코드/행동 예시 |
+| --- | --- | --- |
+| **boolean 플래그로 정지 제어 시 지연 가능** | “모든 자동차 스레드에게 STOP 신호를 보내도, 일부는 아직 sleep 중이거나 연산 중이라 즉시 멈추지 않는다.” ‘플래그 기반 종료’는 반응이 느릴 수 있다. | `while (!stopRequested) { move(); Thread.sleep(100);}                              // sleep 중엔 반응 느림` |
+| **interrupt()로 즉시 깨우기** | “경기 긴급 중단” 같은 상황. 심판 스레드가 모든 자동차에게 `interrupt()`호출 → sleep 중인 자동차도 즉시 깨어나고 종료 루틴으로 진입. | `for(Thread carThread : threads) { carThread.interrupt()}` |
+| **Thread.interrupted()로 상태 확인 후 정리** | 자동차가 인터럽트를 감지하면 스스로 종료 절차 수행. ‘자원 정리’(예: 결과 저장, 로그 출력 등) 후 안전 종료 가능. | `while (true) { if (Thread.interrupted()) { cleanUp(); break; } move(); }` |
+| **Thread.stop() 사용 금지** | “강제 차단”처럼 보이지만 실제론 위험함. 자동차가 주행 중인데 갑자기 stop() 하면 position 갱신 중 데이터 깨짐 가능. (데이터 일관성 깨짐 위험) | ❌ `carThread.stop();` → 쓰지 말 것 |
+| **yield() vs sleep()** | 자동차 스레드가 너무 CPU를 독점하지 않도록 잠시 양보할 때는 `yield()` | `java Thread.yield(); // 다른 차에게 실행 기회` |
