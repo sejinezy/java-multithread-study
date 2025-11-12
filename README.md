@@ -261,6 +261,7 @@
   - Fairness 모드는 대기 순서를 보장하지만, 락 획득 과정에 추가 오버헤드가 발생해 Non-Fair 모드에 비해 일반적으로 성능이 느려진다. 락 획득 순서 예측 불가능은 Non-Fair 모드의 특징이다.
 
 
+---
 ## 📚 생산자 소비자 문제 1
 
 - 생산자 - 소비자 문제에서 다루는 핵심 이슈는?
@@ -317,3 +318,41 @@
 | **notify()의 역할** | 자동차 스레드가 새로운 결과를 넣었을 때 대기 중인 소비자 스레드를 깨움. | `synchronized (queue) { queue.add(result); queue.notify(); }` |
 | **notify()의 비효율성** | 여러 자동차(생산자)가 많고 소비자(출력 스레드)가 하나라면, notifyAll()이 필요할 수 있음. | 비효율적 |
 | **전체적 문제 구조** | 자동차: 생산자                                   결과 출력기(심판): 소비자                 버퍼: RoundResult 큐 | 생산자-소비자 모델 매칭 |
+
+
+---
+## 📚 생산자 소비자 문제 2
+
+- 생산자-소비자 문제에서 synchronized/Object를 사용하여 단일 대기 공간을 운영할 때의 주요 비효율성은?
+  - **버퍼 상태와 관계없이 임의의 스레드가 깨어날 수 있다.**
+  - 단일 대기 공간에서는 생산자가 소비자를, 소비자가 생산자를 깨워야 하지만, 실제로는 데이터 유무와 관계없이 임의의 대기 스레드가 깨어날 수 있어 비효율적이다.
+
+- Lock과 Condition이 synchronized/Object의 단일 대기 공간 한계를 극복할 수 있게 해주는 핵심 기능은?
+  - **여러 개의 대기 공간 생성**
+  - Lock 인터페이스의 newCondition() 메서드를 사용하면 생산자, 소비자 등 목적에 맞는 여러 개의 Condition 객체를 생성하여 대기 공간을 분리할 수 있다.
+
+- 생산자-소비자 패턴에서 생산자 스레드와 소비자 스레드의 대기 공간을 분리했을 때 얻을 수 있는 주요 이점은?
+  - **필요한 스레드만 깨워 효율성을 높인다.**
+  - 생산자는 소비자 대기 공간에, 소비자는 생산자 대기 공간에 신호를 보내어 필요한 스레드만 정확하게 깨우므로 불필요한 경쟁과 비효율을 줄일 수 있다.
+
+- BlockingQueue가 비어있는 상태에서 스레드가 블록킹(blocking) 추출(take) 작업을 시도하면 어떻게 되는지?
+  - **버퍼에 데이터가 생길 때까지 대기한다.**
+  - BlockingQueue의 take() 메서드는 큐가 비어있을 때 즉시 오류를 반환하거나 null을 주는 대신, 데이터가 생길 때까지 해당 스레드를 자동으로 대기 상태로 만든다.
+
+- synchronized 락 획득 대기 스레드(Blocked 상태)와 ReentrantLock의 Condition에서 대기하는 스레드(Waiting 상태)의 주요 차이점 중 하나는?
+  - **대기 중 인터럽트 가능성**
+  - Synchronized 락 획득 대기(Blocked) 상태는 일반적으로 인터럽트가 불가능하지만, ReentrantLock의 Condition에서 await()로 대기(Waiting)하는 스레드는 인터럽트될 수 있다는 차이가 있다.
+
+
+### 🚗 자동차 경주에 적용해보기
+
+| 학습 내용 | 자동차 경주 적용 예시 | 의미 / 코드 예시 |
+| --- | --- | --- |
+| **단일 대기 공간의 비효율성** | synchronized + wait/notify 방식으로 자동차(생산자)가 결과를 넣거나, 출력 스레드(소비자)가 꺼내는 구조를 만들면, 불필요하게 깨어나는 스레드가 생김 | `synchronized(queue){ queue.add(log); queue.notify(); }` → 대기 중인 소비자가 없을 수도 있음 |
+| **Lock과 Condition의 핵심 기능** | 생산자용 Condition / 소비자용 Condition을 따로 둘 수 있음. 하지만 직접 구현할 필요 없이, `BlockingQueue`가 내부적으로 이 두 Condition을 관리해줌 | `ArrayBlockingQueue` 내부에는 `notFull`, `notEmpty` 두 Condition 존재 |
+| **대기 공간 분리의 이점** | 자동차가 큐가 가득 찼을 때 `notFull.await()`로 정확히 대기하고, 로거가 데이터가 없을 때 `notEmpty.await()`로 대기 → 필요한 스레드만 깨어남 | 불필요한 깨움 감소, 효율 향상 |
+| **BlockingQueue가 비어 있을 때 take() 동작** | 출력 스레드(Logger)가 `take()` 호출 시, 큐가 비면 자동으로 대기(Waiting) 상태로 전환 → 바쁜 대기 없음 | `LogEvent ev = queue.take();` |
+| **Blocked vs Waiting 상태 차이** | 자동차 스레드가 `put()`에서 대기할 땐 Waiting 상태 (인터럽트 가능) → 필요 시 `interrupt()` 가능 | `catch (InterruptedException e) { Thread.currentThread().interrupt(); }` |
+| **Lock & Condition을 직접 쓰지 않아도 되는 이유** | `BlockingQueue` 내부가 이미 Lock/Condition 기반 구현으로 되어 있음. → 직접 `synchronized` 블록을 관리할 필요 없음 | `ArrayBlockingQueue` = ReentrantLock + notFull + notEmpty 조건 큐 |
+| **효율적 동작의 본질** | 생산자(자동차)는 버퍼가 꽉 차면 자동 대기, 소비자(Logger)는 버퍼가 비면 자동 대기 → 교착 없이 효율적 협력 | 자동차가 로그 100개 만들어도, 로거가 1개씩만 처리 가능.  |
+| **자동차: 생산자 / Logger: 소비자 구조** | 자동차 → `queue.put(LogEvent)` Logger → `queue.take()` 모두 내부 Lock/Condition 구조 활용 | `BlockingQueue<LogEvent> queue = new ArrayBlockingQueue<>(10);` |
