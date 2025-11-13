@@ -451,3 +451,65 @@
 | **`java.util.concurrent` 컬렉션의 목적** | 자동차 스레드들이 동시에 결과를 추가해도 락 경합 없이 처리 | 내부적으로 락 분할, CAS, 세그먼트 구조 등으로 구현 → 높은 병렬성 |
 | **`ConcurrentHashMap` 사용 예시** | 자동차 이름(key)별 이동 거리(value)를 저장하며 실시간 업데이트 | `ConcurrentHashMap<String, Integer> carPositions = new ConcurrentHashMap<>();`   |
 | **싱글 스레드 환경에서는 일반 컬렉션 사용** | 자동차가 하나뿐이거나 라운드 순차 처리 시에는 동시성 컬렉션 불필요 → ArrayList로 충분 | 동시성 컬렉션은 오버헤드 있음. 스레드 한 개면 일반 리스트가 빠름 |
+
+
+---
+## 📚 스레드 풀과 Executor 프레임워크 1
+
+- 스레드를 직접 여러 개 만들 때 발생하는 주된 문제점은?
+  - **성능 저하 및 자원 소모**
+  - 직접 스레드를 생성하는 것은 메모리 할당 및 운영체제 자원을 소모해 성능 저하를 일으킬 수 있다. 특히 많은 태스크 처리 시 오버헤드가 커진다.
+
+- 많은 수의 스레드를 효율적으로 관리하기 어려워지는 이유는?
+  - **운영체제 자원 및 서버 용량 한계**
+  - 서버의 CPU, 메모리 등 제한된 자원 때문에 무한정 스레드를 만들 수 없다. 시스템은 처리 가능한 만큼만 스레드를 관리해야 한다.
+
+- Runnable 인터페이스를 사용하는 태스크의 주요 불편함은?
+  - **반환 값 부재 및 체크 예외 처리 제약**
+  - Runnable의 ‘run’ 메서드는 반환 값이 void라 결과 회수에 별도 과정이 필요하다. 체크 예외도 외부에 던지지 못하고 내부 처리해야한다.
+
+- 스레드 풀이 스레드 생성 성능 문제를 해결하는 주된 방법은?
+  - **생성된 스레드의 재사용**
+  - 스레드 풀은 미리 생성된 스레드를 재사용한다. 태스크 요청 시 스레드 생성 시간 대신 기존 스레드를 바로 투입하여 오버헤드를 줄인다.
+
+- ThreadPoolExecutor 구조에서 태스크를 저장하고 스레드가 가져가 처리하는 역할을 하는 것은?
+  - **BlockingQueue**
+  - ThreadPoolExecutor는 스레드 풀과 BlockingQueue로 구성된다. 제출된 태스크는 BlockingQueue에 저장되고, 스레드 풀의 스레드들이 큐에서 태스크를 가져가 처리한다.
+
+- ExecutorService에 Callable 태스크를 제출했을 때, 즉시 반환되는 Future 객체는 무엇을 의미하는가?
+  - **비동기 실행되는 태스크의 미래 결과에 대한 핸들**
+  - Future는 비동기적으로 실행될 태스크의 ‘미래’결과를 나타내는 객체다. ‘submit()’ 즉시 반환되어 태스크가 언제 끝날지 모를 때 결과 해들로 사용된다.
+
+- Future 객체의 ‘get()’ 메서드를 호출했을 때, 태스크가 아직 완료되지 않았다면 어떤 동작을 하는지?
+  - **현재 스레드를 차단(Blocking)하고 완료까지 기다림**
+  - ‘future.get()’은 태스크의 결과를 얻는 메서드이다. 결과가 아직 준비되지 않았다면, 결과를 받을 수 있을 때까지 현재 스레드의 진행을 멈추고 기다리게 된다.
+
+- Future로 실행된 Callable 태스크에서 RuntimeException이 발생했을 때, ‘future.get()’호출 시 어떤 일이 일어나는지?
+  - **ExecutionException 발생 및 원인 예외 포함**
+  - Callable 태스크 실행 중 예외 발생 시, Future는 이 예외를 내부적으로 저장한다. ‘future.get()’ 호출 시 저장된 예외를 ExecutionException으로 감싸서 다시 던진다.
+
+- 여러 독립적인 태스크를 Future로 병렬 실행하고 결과를 얻을 때 가장 효율적인 방식은?
+  - **모든 태스크 제출 후, 나중에 각 ‘future.get()’ 호출**
+  - 모든 태스크를 먼저 제출하면 최대한 병렬 실행되고, 이후 ‘get()’으로 결과를 모아야 차단 대기 시간을 최소화하고 병렬 효과를 최대로 얻을 수 있다.
+
+- 여러 Callable 태스크 컬렉션을 제출하고 ‘모두’ 완료될 때까지 기다려 결과를 받으려면?
+  - **‘invokeAll()’**
+  - ‘invokeAll()’ 메서드는 컬렉션의 모든 태스크를 제출하고 모두 끝날 때까지 현재 스레드를 기다리게 한다. 모든 태스크의 Future 목록을 결과로 반환한다.
+
+
+### 🚗 자동차 경주에 적용해보기
+
+- 지금까지 배운 Thread, Runnable, BlockingQueue, Future 전부 ExecutorService로 자연스럽게 통합 !!
+
+| 학습 내용 | 자동차 경주 적용 예시 | 의미 / 코드 예시 |
+| --- | --- | --- |
+| **스레드를 직접 여러 개 만들면 성능 저하** | 자동차 100대를 `new Thread()`로 각각 돌리면 스레드 생성 오버헤드와 자원 낭비 발생 | `new Thread(carTask).start(); // 매번 생성❌`  ⇒ `ExecutorService`로 미리 만든 스레드 재사용 |
+| **많은 스레드를 관리하기 어렵다** | 자동차 대수가 많아지면 스레드 수가 CPU 코어 수보다 많아짐 → 컨텍스트 스위칭, CPU 낭비 | ThreadPoolExecutor는 스레드 수 제한으로 과도한 생성 방지 |
+| **Runnable의 불편함 (반환값 없음)** | 자동차 이동 결과(CarPosition)를 받아야 하는데 Runnable은 반환값이 없어 불편 | `Callable<CarPosition>` 사용 → 이동 결과를 Future로 회수 |
+| **스레드 풀의 재사용** | 각 라운드마다 자동차 이동 태스크를 제출해도, 스레드는 새로 안 만들고 재사용 | `ExecutorService pool = Executors.newFixedThreadPool(5);` |
+| **ThreadPoolExecutor의 BlockingQueue 역할** | 자동차 이동 요청들이 들어올 때마다 BlockingQueue에 쌓이고, 스레드가 하나씩 처리 | 생산자 - 소비자 문제 해결 |
+| **Callable + Future = 비동기 실행 결과** | 자동차의 이동 결과를 나중에 Future로 받기 | `Future<CarPosition> future = pool.submit(carTask);` |
+| **Future.get()의 Blocking 특성** | 한 자동차 이동이 아직 끝나지 않았으면 get()에서 기다림  | `CarPosition result = future.get(); // 완료 시점까지 대기` |
+| **태스크에서 예외 발생 시 ExecutionException** | 자동차 이동 중 예외 발생 시(예: 입력값 오류), Future에서 get()할 때 예외 확인 가능 | `try { future.get(); } catch (ExecutionException e) { ... }` |
+| **여러 태스크 병렬 실행 후 결과 모으기** | 모든 자동차의 이동 태스크를 먼저 제출한 뒤, 나중에 한 번에 결과 수집 | `List<Future<CarPosition>> futures = pool.invokeAll(tasks);` |
+| **invokeAll()으로 전부 끝날 때까지 대기** | 한 라운드의 모든 자동차 이동이 끝날 때까지 기다렸다가 결과 출력 | `List<Future<CarPosition>> futures = pool.invokeAll(tasks);`  `for(Future f : futures) f.get();` |
