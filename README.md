@@ -513,3 +513,39 @@
 | **태스크에서 예외 발생 시 ExecutionException** | 자동차 이동 중 예외 발생 시(예: 입력값 오류), Future에서 get()할 때 예외 확인 가능 | `try { future.get(); } catch (ExecutionException e) { ... }` |
 | **여러 태스크 병렬 실행 후 결과 모으기** | 모든 자동차의 이동 태스크를 먼저 제출한 뒤, 나중에 한 번에 결과 수집 | `List<Future<CarPosition>> futures = pool.invokeAll(tasks);` |
 | **invokeAll()으로 전부 끝날 때까지 대기** | 한 라운드의 모든 자동차 이동이 끝날 때까지 기다렸다가 결과 출력 | `List<Future<CarPosition>> futures = pool.invokeAll(tasks);`  `for(Future f : futures) f.get();` |
+
+
+---
+## 📚 스레드 풀과 Executor 프레임워크 2
+
+- ExecutorService에서 ‘shutdown()’과 ‘shutdownNow()’ 종료 방식의 가장 큰 차이는?
+  - **실행 중인 작업 처리 방식**
+  - ‘shutdown()’은 실행 중이거나 큐에 제출된 작업은 완료하지만, ‘shutdownNow()’는 실행 중인 작업까지 인터럽트하며 큐 대기 작업도 반환하여 즉시 종료를 시도한다.
+
+- 일반적인 설정(제한된 큐, 최대 스레드 > 코어 스레드) 에서 ThreadPoolExecutor가 코어 스레드 개수 이상으로 스레드를 추가 생성하기 시작하는 시점은 언제인가?
+  - **큐가 가득 찼을 때**
+  - ThreadPoolExecutor는 코어 스레드가 바쁘면 작업을 큐에 먼저 넣는다. 큐가 가득 차서 더 이상 작업을 받을 수 없을 때 최대 스레드 개수까지 스레드를 늘려 처리한다.
+
+- FixedThreadPool은 자원 사용 예측 가능성이 높지만, 지속적으로 높은 부하가 걸릴 때 발생할 수 있는 주요 단점은?
+  - **큐에 작업이 무한정 쌓여 응답 지연 심화**
+  - FixedThreadPool은 무제한 큐를 사용하여 작업이 거부되진 않지만, 처리량보다 요청 속도가 빠르면 큐가 계속 쌓여서 사용자 요청에 대한 응답 시간이 점점 느려지는 문제가 생길 수 있다.
+
+- CachedThreadPool 전략 사용 시 갑작스럽고 대규모의 요청 폭주 상황에서 발생할 수 있는 가장 큰 위험은?
+  - **스레드 과다 생성으로 시스템 자원 고갈**
+  - CachedThreadPool은 작업량에 따라 스레드를 거의 무제한으로 생성한다. 갑작스러운 요청 폭주는 스레드를 대량 생성하여 메모리 부족, 컨텍스트 스위칭 비용 증가로 시스템 장애를 유발할 수 있다.
+
+- ExecutorService의 거부 정책 중, 거부된 작업을 해당 작업을 제출한 호출자(Caller) 스레드가 직접 실행하게 만드는 정책은?
+  - **CallerRunsPolicy**
+  - CallerRunsPolicy는 Executor가 처리를 거부한 작업을 제출한 스레드가 직접 실행하게 하여, 시스템 부하가 높을 때 새로운 작업 생성 속도를 늦추는 효과를 기대할 수 있다.
+
+
+### 🚗 자동차 경주에 적용해보기
+
+| **학습 내용** | **자동차 경주 적용 예시** | **의미 / 코드 예시** |
+| --- | --- | --- |
+| **shutdown()정상 종료: 대기 중/실행 중 작업 마무리 후 종료** | 레이스가 정상적으로 끝났을 때모든 자동차 이동 태스크 + Logger 스레드가 끝날 때까지 기다린 후 종료 | `executor.shutdown(); executor.awaitTermination(3, TimeUnit.SECONDS);`- 우아한 종료(Graceful shutdown) |
+| **shutdownNow()즉시 종료: 실행 중 작업 interrupt** | 강제 종료 기능 만들 때(예: STOP 명령이 들어왔을 때) | `List<Runnable> dropped = executor.shutdownNow();`- 아직 처리되지 않은 태스크 목록도 얻을 수 있음 |
+| **코어 스레드 초과한 추가 생성 시점 = 큐가 가득 찼을 때** | 자동차가 많아지고, Round 내부 병렬 실행 시→ 큐가 꽉 차면 코어 스레드 이상 생성 | `new ThreadPoolExecutor(4, 8,60, TimeUnit.SECONDS, new ArrayBlockingQueue<>(10));`- 병렬 처리량 증가 vs CPU 부하 |
+| **FixedThreadPool 단점 = 무한 큐로 인한 지연 증가** | 자동차 수가 많고 라운드가 길면작업이 무한 큐에 누적 → 전체 출력 시간 지연 | `ExecutorService pool = Executors.newFixedThreadPool(4);// 내부는 무제한 큐(LinkedBlockingQueue) 사용`- 작업이 쌓이기만 해서 지연(time-to-output) 심해짐 |
+| **CachedThreadPool 위험 = 스레드 폭증** | 자동차 100대 × 100라운드→ 작업 10,000개 제출 시 스레드 폭발 가능 | `ExecutorService pool = Executors.newCachedThreadPool();`- 스레드 수가 실시간으로 증가 → 메모리, CPU 과부하가능성 |
+| **CallerRunsPolicy거부된 작업을 제출 스레드가 직접 수행** | 자동차 100대 + 큐/스레드풀 full 상황→ 메인 스레드가 직접 자동차를 이동시켜 속도를 자연스럽게 늦춤 | `new ThreadPoolExecutor(<br>  4, 4,0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(10), new ThreadPoolExecutor.CallerRunsPolicy());`- 부하가 걸리면 자동으로 브레이크 걸리는 효과 |
